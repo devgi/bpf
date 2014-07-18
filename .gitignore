@@ -57,3 +57,8 @@ externals
 .idea
 .project
 .pydevproject
+
+# ply
+parser.out
+parsetab.py
+parsetab.py
