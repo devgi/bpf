@@ -2,94 +2,153 @@ import struct
 import socket
 from collections import namedtuple
 
-from bpf.ethertype import (ETHERTYPE_VEXP, ETHERTYPE_DN, ETHERTYPE_MOPDL,
-                           ETHERTYPE_PUP, ETHERTYPE_LAT, ETHERTYPE_AARP,
-                           ETHERTYPE_REVARP, ETHERTYPE_DECDNS, ETHERTYPE_VPROD,
-                           ETHERTYPE_PPPOES, ETHERTYPE_IP, ETHERTYPE_ATALK,
-                           ETHERTYPE_8021Q, ETHERTYPE_MPLS, ETHERTYPE_MOPRC,
-                           ETHERTYPE_MPLS_MULTI, ETHERTYPE_PPPOED,
-                           ETHERTYPE_8021QINQ, ETHERTYPE_IPV6, ETHERTYPE_IPX,
-                           ETHERTYPE_TRAIL, ETHERTYPE_ARP, ETHERTYPE_NS,
-                           ETHERTYPE_SPRITE, ETHERTYPE_LOOPBACK, ETHERTYPE_SCA,
-                           ETHERTYPE_DECDTS, ETHERTYPE_LANBRIDGE)
+from bpf.netconsts.ethertype import (ETHERTYPE_VEXP, ETHERTYPE_DN,
+                                     ETHERTYPE_MOPDL,
+                                     ETHERTYPE_PUP, ETHERTYPE_LAT,
+                                     ETHERTYPE_AARP,
+                                     ETHERTYPE_REVARP, ETHERTYPE_DECDNS,
+                                     ETHERTYPE_VPROD,
+                                     ETHERTYPE_PPPOES, ETHERTYPE_IP,
+                                     ETHERTYPE_ATALK,
+                                     ETHERTYPE_8021Q, ETHERTYPE_MPLS,
+                                     ETHERTYPE_MOPRC,
+                                     ETHERTYPE_MPLS_MULTI, ETHERTYPE_PPPOED,
+                                     ETHERTYPE_8021QINQ, ETHERTYPE_IPV6,
+                                     ETHERTYPE_IPX,
+                                     ETHERTYPE_TRAIL, ETHERTYPE_ARP,
+                                     ETHERTYPE_NS,
+                                     ETHERTYPE_SPRITE, ETHERTYPE_LOOPBACK,
+                                     ETHERTYPE_SCA,
+                                     ETHERTYPE_DECDTS, ETHERTYPE_LANBRIDGE)
 
-from bpf.llc import (LLCSAP_RS511, LLCSAP_IPX, LLCSAP_NULL, LLCSAP_8021D,
-                     LLCSAP_SNAP, LLCSAP_PROWAY, LLCSAP_ISONS, LLCSAP_GLOBAL,
-                     LLCSAP_8021B_I, LLCSAP_IP, LLCSAP_PROWAYNM, LLCSAP_NETBEUI,
-                     LLCSAP_ISO8208, LLCSAP_8021B_G)
+from bpf.netconsts.llc import (LLCSAP_RS511, LLCSAP_IPX, LLCSAP_NULL,
+                               LLCSAP_8021D,
+                               LLCSAP_SNAP, LLCSAP_PROWAY, LLCSAP_ISONS,
+                               LLCSAP_GLOBAL,
+                               LLCSAP_8021B_I, LLCSAP_IP, LLCSAP_PROWAYNM,
+                               LLCSAP_NETBEUI,
+                               LLCSAP_ISO8208, LLCSAP_8021B_G)
 
-from bpf.nlpid import (ISO8878A_CONS, ISO9542_ESIS, ISO10747_IDRP, ISIS_L1_PSNP,
-                       ISIS_L2_PSNP, ISIS_L1_CSNP, ISIS_L1_LSP, ISIS_L2_LAN_IIH,
-                       ISO9542X25_ESIS, ISIS_L2_LSP, ISIS_L2_CSNP, ISIS_PTP_IIH,
-                       ISIS_L1_LAN_IIH, ISO10589_ISIS, ISO8473_CLNP)
+from bpf.netconsts.nlpid import (ISO8878A_CONS, ISO9542_ESIS, ISO10747_IDRP,
+                                 ISIS_L1_PSNP,
+                                 ISIS_L2_PSNP, ISIS_L1_CSNP, ISIS_L1_LSP,
+                                 ISIS_L2_LAN_IIH,
+                                 ISO9542X25_ESIS, ISIS_L2_LSP, ISIS_L2_CSNP,
+                                 ISIS_PTP_IIH,
+                                 ISIS_L1_LAN_IIH, ISO10589_ISIS, ISO8473_CLNP)
 
-from bpf.ppp import (PPP_MPLS_MCAST, PPP_DECNETCP, PPP_SNS, PPP_STIICP,
-                     PPP_MPLSCP, PPP_IPV6CP, PPP_DECNET, PPP_MPLS_UCAST,
-                     PPP_IPX, PPP_HELLO, PPP_ADDRESS, PPP_PAP, PPP_LCP,
-                     PPP_VINESCP, PPP_NSCP, PPP_NS, PPP_VINES, PPP_STII,
-                     PPP_IPXCP, PPP_CHAP, PPP_OSI, PPP_APPLE, PPP_BRPDU,
-                     PPP_IPV6, PPP_CONTROL, PPP_OSICP, PPP_LQM, PPP_LUXCOM,
-                     PPP_PPPD_OUT, PPP_APPLECP, PPP_IPCP, PPP_VJC, PPP_VJNC,
-                     PPP_IP, PPP_PPPD_IN)
+from bpf.netconsts.ppp import (PPP_MPLS_MCAST, PPP_DECNETCP, PPP_SNS,
+                               PPP_STIICP,
+                               PPP_MPLSCP, PPP_IPV6CP, PPP_DECNET,
+                               PPP_MPLS_UCAST,
+                               PPP_IPX, PPP_HELLO, PPP_ADDRESS, PPP_PAP,
+                               PPP_LCP,
+                               PPP_VINESCP, PPP_NSCP, PPP_NS, PPP_VINES,
+                               PPP_STII,
+                               PPP_IPXCP, PPP_CHAP, PPP_OSI, PPP_APPLE,
+                               PPP_BRPDU,
+                               PPP_IPV6, PPP_CONTROL, PPP_OSICP, PPP_LQM,
+                               PPP_LUXCOM,
+                               PPP_PPPD_OUT, PPP_APPLECP, PPP_IPCP, PPP_VJC,
+                               PPP_VJNC,
+                               PPP_IP, PPP_PPPD_IN)
 
-from bpf.linktype import (DLT_PPP_BSDOS, DLT_C_HDLC, DLT_PFLOG,
-                          DLT_JUNIPER_ATM2, DLT_IS_NETBSD_RAWAF,
-                          DLT_JUNIPER_MLPPP, DLT_IEEE802_15_4_NONASK_PHY,
-                          DLT_WIHART, DLT_LOOP, DLT_LINUX_PPP_WITHDIRECTION,
-                          DLT_IEEE802_16_MAC_CPS, DLT_ATM_CLIP,
-                          DLT_SYMANTEC_FIREWALL, DLT_PPP_PPPD, DLT_PFSYNC,
-                          DLT_AX25_KISS, DLT_AIRONET_HEADER, DLT_PRONET,
-                          DLT_REDBACK_SMARTEDGE, DLT_ATM_RFC1483,
-                          DLT_SLIP_BSDOS, DLT_NULL, DLT_IBM_SP,
-                          DLT_JUNIPER_ATM1, DLT_IEEE802_15_4_LINUX,
-                          DLT_NETBSD_RAWAF_AF, DLT_PPP_SERIAL, DLT_GPRS_LLC,
-                          DLT_CISCO_IOS, DLT_AURORA, DLT_GSMTAP_ABIS,
-                          DLT_JUNIPER_ISM, DLT_DBUS, DLT_IEEE802_11, DLT_GPF_F,
-                          DLT_NFLOG, DLT_IBM_SN, DLT_JUNIPER_ES, DLT_LIN,
-                          DLT_BACNET_MS_TP, DLT_SUNATM, DLT_IEEE802_11_RADIO,
-                          DLT_USB, DLT_LINUX_LAPD, DLT_X2E_SERIAL,
-                          DLT_USB_LINUX, DLT_JUNIPER_VS, DLT_JUNIPER_GGSN,
-                          DLT_AX25, DLT_JUNIPER_FIBRECHANNEL, DLT_DECT,
-                          DLT_LINUX_SLL, DLT_FDDI, DLT_RAIF1, DLT_SCTP,
-                          DLT_CAN_SOCKETCAN, DLT_EN10MB, DLT_AOS, DLT_SITA,
-                          DLT_GSMTAP_UM, DLT_BLUETOOTH_HCI_H4,
-                          DLT_JUNIPER_PIC_PEER, DLT_GPF_T, DLT_LAPB_WITH_DIR,
-                          DLT_IPNET, DLT_ERF_POS, DLT_IEEE802_15_4_NOFCS,
-                          DLT_ERF_ETH, DLT_LTALK, DLT_LINUX_EVDEV, DLT_CLASS,
-                          DLT_USER15, DLT_USER14, DLT_USER13, DLT_USER12,
-                          DLT_USER11, DLT_USER10, DLT_JUNIPER_FRELAY, DLT_FC_2,
-                          DLT_PPP, DLT_CHAOS, DLT_PPP_ETHER, DLT_JUNIPER_MFR,
-                          DLT_MPLS, DLT_PPP_WITH_DIRECTION, DLT_FLEXRAY,
-                          DLT_APPLE_IP_OVER_IEEE1394, DLT_PPI, DLT_RAW,
-                          DLT_BLUETOOTH_HCI_H4_WITH_PHDR, DLT_JUNIPER_PPPOE,
-                          DLT_NETANALYZER, DLT_GCOM_T1E1, DLT_USBPCAP, DLT_ERF,
-                          DLT_ARCNET, DLT_SLIP, DLT_NETANALYZER_TRANSPARENT,
-                          DLT_ENC, DLT_RIO, DLT_IPOIB, DLT_IP_OVER_FC,
-                          DLT_PPP_WITH_DIR, DLT_FC_2_WITH_FRAME_DELIMS,
-                          DLT_LINUX_IRDA, DLT_JUNIPER_ETHER, DLT_ARCNET_LINUX,
-                          DLT_INFINIBAND, DLT_JUNIPER_VP, DLT_ECONET,
-                          DLT_C_HDLC_WITH_DIR, DLT_SCCP, DLT_X2E_XORAYA,
-                          DLT_JUNIPER_SRX_E2E, DLT_CAN20B,
-                          DLT_JUNIPER_ATM_CEMIC, DLT_PCI_EXP,
-                          DLT_STANAG_5066_D_PDU, DLT_GCOM_SERIAL,
-                          DLT_MTP2_WITH_PHDR, DLT_HHDLC, DLT_IEEE802_15_4,
-                          DLT_FRELAY_WITH_DIR, DLT_JUNIPER_SERVICES, DLT_MTP2,
-                          DLT_MTP3, DLT_MATCHING_MAX, DLT_IPMB_LINUX,
-                          DLT_PRISM_HEADER, DLT_CLASS_NETBSD_RAWAF,
-                          DLT_USB_LINUX_MMAPPED, DLT_TZSP, DLT_JUNIPER_PPP,
-                          DLT_MUX27010, DLT_IPV6, DLT_IPV4, DLT_JUNIPER_CHDLC,
-                          DLT_NG40, DLT_DOCSIS, DLT_USER9, DLT_USER8, DLT_USER7,
-                          DLT_USER6, DLT_USER5, DLT_USER4, DLT_USER3, DLT_USER2,
-                          DLT_USER1, DLT_USER0, DLT_LAPD, DLT_NETBSD_RAWAF,
-                          DLT_IEEE802_11_RADIO_AVS, DLT_EN3MB, DLT_MPEG_2_TS,
-                          DLT_JUNIPER_ST, DLT_IPMB, DLT_A653_ICM,
-                          DLT_JUNIPER_MONITOR, DLT_MATCHING_MIN,
-                          DLT_JUNIPER_MLFR, DLT_IPFILTER, DLT_MFR, DLT_NFC_LLCP,
-                          DLT_IEEE802_16_MAC_CPS_RADIO, DLT_CHDLC,
-                          DLT_JUNIPER_PPPOE_ATM, DLT_MOST, DLT_A429, DLT_FRELAY,
-                          DLT_DVB_CI, DLT_IEEE802)
+from bpf.netconsts.linktype import (DLT_PPP_BSDOS, DLT_C_HDLC, DLT_PFLOG,
+                                    DLT_JUNIPER_ATM2, DLT_IS_NETBSD_RAWAF,
+                                    DLT_JUNIPER_MLPPP,
+                                    DLT_IEEE802_15_4_NONASK_PHY,
+                                    DLT_WIHART, DLT_LOOP,
+                                    DLT_LINUX_PPP_WITHDIRECTION,
+                                    DLT_IEEE802_16_MAC_CPS, DLT_ATM_CLIP,
+                                    DLT_SYMANTEC_FIREWALL, DLT_PPP_PPPD,
+                                    DLT_PFSYNC,
+                                    DLT_AX25_KISS, DLT_AIRONET_HEADER,
+                                    DLT_PRONET,
+                                    DLT_REDBACK_SMARTEDGE, DLT_ATM_RFC1483,
+                                    DLT_SLIP_BSDOS, DLT_NULL, DLT_IBM_SP,
+                                    DLT_JUNIPER_ATM1, DLT_IEEE802_15_4_LINUX,
+                                    DLT_NETBSD_RAWAF_AF, DLT_PPP_SERIAL,
+                                    DLT_GPRS_LLC,
+                                    DLT_CISCO_IOS, DLT_AURORA, DLT_GSMTAP_ABIS,
+                                    DLT_JUNIPER_ISM, DLT_DBUS, DLT_IEEE802_11,
+                                    DLT_GPF_F,
+                                    DLT_NFLOG, DLT_IBM_SN, DLT_JUNIPER_ES,
+                                    DLT_LIN,
+                                    DLT_BACNET_MS_TP, DLT_SUNATM,
+                                    DLT_IEEE802_11_RADIO,
+                                    DLT_USB, DLT_LINUX_LAPD, DLT_X2E_SERIAL,
+                                    DLT_USB_LINUX, DLT_JUNIPER_VS,
+                                    DLT_JUNIPER_GGSN,
+                                    DLT_AX25, DLT_JUNIPER_FIBRECHANNEL,
+                                    DLT_DECT,
+                                    DLT_LINUX_SLL, DLT_FDDI, DLT_RAIF1,
+                                    DLT_SCTP,
+                                    DLT_CAN_SOCKETCAN, DLT_EN10MB, DLT_AOS,
+                                    DLT_SITA,
+                                    DLT_GSMTAP_UM, DLT_BLUETOOTH_HCI_H4,
+                                    DLT_JUNIPER_PIC_PEER, DLT_GPF_T,
+                                    DLT_LAPB_WITH_DIR,
+                                    DLT_IPNET, DLT_ERF_POS,
+                                    DLT_IEEE802_15_4_NOFCS,
+                                    DLT_ERF_ETH, DLT_LTALK, DLT_LINUX_EVDEV,
+                                    DLT_CLASS,
+                                    DLT_USER15, DLT_USER14, DLT_USER13,
+                                    DLT_USER12,
+                                    DLT_USER11, DLT_USER10, DLT_JUNIPER_FRELAY,
+                                    DLT_FC_2,
+                                    DLT_PPP, DLT_CHAOS, DLT_PPP_ETHER,
+                                    DLT_JUNIPER_MFR,
+                                    DLT_MPLS, DLT_PPP_WITH_DIRECTION,
+                                    DLT_FLEXRAY,
+                                    DLT_APPLE_IP_OVER_IEEE1394, DLT_PPI,
+                                    DLT_RAW,
+                                    DLT_BLUETOOTH_HCI_H4_WITH_PHDR,
+                                    DLT_JUNIPER_PPPOE,
+                                    DLT_NETANALYZER, DLT_GCOM_T1E1, DLT_USBPCAP,
+                                    DLT_ERF,
+                                    DLT_ARCNET, DLT_SLIP,
+                                    DLT_NETANALYZER_TRANSPARENT,
+                                    DLT_ENC, DLT_RIO, DLT_IPOIB, DLT_IP_OVER_FC,
+                                    DLT_PPP_WITH_DIR,
+                                    DLT_FC_2_WITH_FRAME_DELIMS,
+                                    DLT_LINUX_IRDA, DLT_JUNIPER_ETHER,
+                                    DLT_ARCNET_LINUX,
+                                    DLT_INFINIBAND, DLT_JUNIPER_VP, DLT_ECONET,
+                                    DLT_C_HDLC_WITH_DIR, DLT_SCCP,
+                                    DLT_X2E_XORAYA,
+                                    DLT_JUNIPER_SRX_E2E, DLT_CAN20B,
+                                    DLT_JUNIPER_ATM_CEMIC, DLT_PCI_EXP,
+                                    DLT_STANAG_5066_D_PDU, DLT_GCOM_SERIAL,
+                                    DLT_MTP2_WITH_PHDR, DLT_HHDLC,
+                                    DLT_IEEE802_15_4,
+                                    DLT_FRELAY_WITH_DIR, DLT_JUNIPER_SERVICES,
+                                    DLT_MTP2,
+                                    DLT_MTP3, DLT_MATCHING_MAX, DLT_IPMB_LINUX,
+                                    DLT_PRISM_HEADER, DLT_CLASS_NETBSD_RAWAF,
+                                    DLT_USB_LINUX_MMAPPED, DLT_TZSP,
+                                    DLT_JUNIPER_PPP,
+                                    DLT_MUX27010, DLT_IPV6, DLT_IPV4,
+                                    DLT_JUNIPER_CHDLC,
+                                    DLT_NG40, DLT_DOCSIS, DLT_USER9, DLT_USER8,
+                                    DLT_USER7,
+                                    DLT_USER6, DLT_USER5, DLT_USER4, DLT_USER3,
+                                    DLT_USER2,
+                                    DLT_USER1, DLT_USER0, DLT_LAPD,
+                                    DLT_NETBSD_RAWAF,
+                                    DLT_IEEE802_11_RADIO_AVS, DLT_EN3MB,
+                                    DLT_MPEG_2_TS,
+                                    DLT_JUNIPER_ST, DLT_IPMB, DLT_A653_ICM,
+                                    DLT_JUNIPER_MONITOR, DLT_MATCHING_MIN,
+                                    DLT_JUNIPER_MLFR, DLT_IPFILTER, DLT_MFR,
+                                    DLT_NFC_LLCP,
+                                    DLT_IEEE802_16_MAC_CPS_RADIO, DLT_CHDLC,
+                                    DLT_JUNIPER_PPPOE_ATM, DLT_MOST, DLT_A429,
+                                    DLT_FRELAY,
+                                    DLT_DVB_CI, DLT_IEEE802)
 
-from bpf.sunatmpos import (PT_ILMI, PT_QSAAL, PT_LLC, PT_LANE, SUNATM_DIR_POS, SUNATM_VCI_POS, SUNATM_VPI_POS, SUNATM_PKT_BEGIN_POS)
+from bpf.netconsts.sunatmpos import (PT_ILMI, PT_QSAAL, PT_LLC, PT_LANE,
+                                     SUNATM_DIR_POS, SUNATM_VCI_POS,
+                                     SUNATM_VPI_POS, SUNATM_PKT_BEGIN_POS)
 
 from bpf.opcodes import (BPF_SRC, BPFOpcode, BPF_DIV, BPF_RVAL, BPF_TAX,
                          BPF_LDX, BPF_MUL, BPF_IND, BPF_TXA, BPF_RET, BPF_JSET,
@@ -669,11 +728,11 @@ def gen_proto_abbrev(proto):
 
 
 # # FIXME: MY: These are global variables the affects the compiling process.(!)
-#  Hack for updating VLAN, MPLS, and PPPoE offsets.
+# Hack for updating VLAN, MPLS, and PPPoE offsets.
 orig_linktype = orig_nl = label_stack_depth = -1
 
-#  "off_linktype" is the offset to information in the link-layer header
-#  giving the packet type.  This offset is relative to the beginning
+# "off_linktype" is the offset to information in the link-layer header
+# giving the packet type.  This offset is relative to the beginning
 #  of the link-layer header (i.e., it doesn't include off_ll).
 #
 #  For Ethernet, it's the offset of the Ethernet type field.
@@ -741,8 +800,8 @@ def gen_linktype(proto):
         return gen_cmp(OR_LINK, off_linktype, BPF_H, proto)
 
     elif linktype in (
-    DLT_IEEE802_11, DLT_PRISM_HEADER, DLT_IEEE802_11_RADIO_AVS,
-    DLT_IEEE802_11_RADIO, DLT_PPI):
+            DLT_IEEE802_11, DLT_PRISM_HEADER, DLT_IEEE802_11_RADIO_AVS,
+            DLT_IEEE802_11_RADIO, DLT_PPI):
         # Check that we have a data frame.
         b0 = gen_check_802_11_data_frame();
 
@@ -762,7 +821,7 @@ def gen_linktype(proto):
     elif linktype == (DLT_ATM_RFC1483, DLT_ATM_CLIP, DLT_IP_OVER_FC):
         return gen_llc_linktype(proto);
 
-    elif linktype ==  DLT_SUNATM:
+    elif linktype == DLT_SUNATM:
         # If "is_lane" is set, check for a LANE-encapsulated
         # version of this protocol, otherwise check for an
         # LLC-encapsulated version of this protocol.
@@ -788,11 +847,10 @@ def gen_linktype(proto):
             gen_and(b0, b1);
             return b1
 
-#
-#     case DLT_LINUX_SLL:
-#         return gen_linux_sll_linktype(proto);
-#         /*NOTREACHED*/
-#         break;
+    elif linktype == DLT_LINUX_SLL:
+        return gen_linux_sll_linktype(proto);
+
+
 #
 #     case DLT_SLIP:
 #     case DLT_SLIP_BSDOS:
@@ -1183,6 +1241,7 @@ def gen_linktype(proto):
 def gen_not(block):
     pass
 
+
 def gen_cmp(offrel, offset, size, v):
     pass
 
@@ -1230,7 +1289,12 @@ def gen_llc_linktype(proto):
 def gen_check_802_11_data_frame():
     pass
 
+
 def gen_atmfield_code(atmfield, jvalue, jtype, reverse):
+    pass
+
+
+def gen_linux_sll_linktype(proto):
     pass
 
 
