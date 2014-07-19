@@ -1,6 +1,7 @@
 import ply.yacc as yacc
 from tcpdump_lex import tokens
-from gencode import finish_parse
+from gencode import (finish_parse, gen_and, gen_or, type2qual, gen_proto_abbrev)
+
 
 
 def QSET(q, p, d, a):
@@ -20,6 +21,12 @@ def p_expression(p):
             | expr OR term
             | expr OR id
             | term"""
+    if len(p) == 2: # term
+        p[0] = p[1]
+    elif p[2] == "and":
+        p[0] = gen_and(p[1], p[3])
+    elif p[2] == "or":
+        p[0] = gen_or(p[1], p[3])
 
 
 # line 334
@@ -96,13 +103,14 @@ def p_rterm(p):
              | atmfield atmvalue
              | mtp2type
              | mtp3field mtp3value"""
-
+    if p.slice[1] == 'pname':
+        p[0].b = gen_proto_abbrev(p[1])
+        p[0].q = qerr;
 
 # line 432
 def p_pqual(p):
     """pqual : pname
              |"""
-
 
 # line 435
 def p_dqual(p):
@@ -174,7 +182,7 @@ def p_pname(p):
              | IPX
              | NETBEUI
              | RADIO"""
-
+    p[0] = type2qual[p.slice[1].type]
 
 def p_other(p):
     """other : pqual TK_BROADCAST
