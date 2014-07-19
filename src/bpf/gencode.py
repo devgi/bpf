@@ -150,6 +150,11 @@ from bpf.netconsts.sunatmpos import (PT_ILMI, PT_QSAAL, PT_LLC, PT_LANE,
                                      SUNATM_DIR_POS, SUNATM_VCI_POS,
                                      SUNATM_VPI_POS, SUNATM_PKT_BEGIN_POS)
 
+from bpf.netconsts.archnet import (ARCTYPE_IP_OLD, ARCTYPE_INET6,
+                                   ARCTYPE_ARP_OLD, ARCTYPE_BANIAN, ARCTYPE_IP,
+                                   ARCTYPE_ARP, ARCTYPE_ATALK, ARCTYPE_DIAGNOSE,
+                                   ARCTYPE_IPX, ARCTYPE_REVARP)
+
 from bpf.opcodes import (BPF_SRC, BPFOpcode, BPF_DIV, BPF_RVAL, BPF_TAX,
                          BPF_LDX, BPF_MUL, BPF_IND, BPF_TXA, BPF_RET, BPF_JSET,
                          BPF_IMM, BPF_LSH, BPF_ABS, BPF_JMP, BPF_AND, BPF_OP,
@@ -387,12 +392,12 @@ ethertype2ppptype = {
 
 # Value passed to gen_load_a() to indicate what the offset argument is relative to.
 # enum e_offrel
-OR_PACKET, = 1  # relative to the beginning of the packet
-OR_LINK, = 2  # relative to the beginning of the link-layer header
-OR_MACPL, = 3  # relative to the end of the MAC-layer header
-OR_NET, = 4  # relative to the network-layer header
-OR_NET_NOSNAP, = 2  # relative to the network-layer header, with no SNAP header at the link layer
-OR_TRAN_IPV4, = 2  # relative to the transport-layer header, with IPv4 network layer
+OR_PACKET = 1  # relative to the beginning of the packet
+OR_LINK = 2  # relative to the beginning of the link-layer header
+OR_MACPL = 3  # relative to the end of the MAC-layer header
+OR_NET = 4  # relative to the network-layer header
+OR_NET_NOSNAP = 2  # relative to the network-layer header, with no SNAP header at the link layer
+OR_TRAN_IPV4 = 2  # relative to the transport-layer header, with IPv4 network layer
 OR_TRAN_IPV6 = 2  # relative to the transport-layer header, with IPv6 network layer
 
 """
@@ -422,6 +427,17 @@ Block = namedtuple("Block", ["id", "stmts", "s", "mark",
 Arch = namedtuple("Arch", ["b", "s", "regno"])
 
 Qual = namedtuple("Qual", ["addr", "proto", "dir", "pad"])
+
+QErr = Qual(Q_UNDEF, Q_UNDEF, Q_UNDEF, Q_UNDEF)
+
+class YYSType(object):
+    __slots__ = (
+        "blk_qual_q",
+        "blk_atmfieldtype",
+        "blk_mtp3fieldtype",
+        "blk_block_b",
+    )
+
 
 JT = lambda b: b.et.succ
 JF = lambda b: b.ef.succ
@@ -733,12 +749,12 @@ orig_linktype = orig_nl = label_stack_depth = -1
 
 # "off_linktype" is the offset to information in the link-layer header
 # giving the packet type.  This offset is relative to the beginning
-#  of the link-layer header (i.e., it doesn't include off_ll).
+# of the link-layer header (i.e., it doesn't include off_ll).
 #
-#  For Ethernet, it's the offset of the Ethernet type field.
+# For Ethernet, it's the offset of the Ethernet type field.
 #
-#  For link-layer types that always use 802.2 headers, it's the
-#  offset of the LLC header.
+# For link-layer types that always use 802.2 headers, it's the
+# offset of the LLC header.
 #
 #  For PPP, it's the offset of the PPP type field.
 #
@@ -850,392 +866,280 @@ def gen_linktype(proto):
     elif linktype == DLT_LINUX_SLL:
         return gen_linux_sll_linktype(proto);
 
+    elif linktype in (DLT_SLIP, DLT_SLIP_BSDOS, DLT_RAW):
+        # These types don't provide any type field; packets
+        # are always IPv4 or IPv6.
+        #
+        # XXX - for IPv4, check for a version number of 4, and,
+        # for IPv6, check for a version number of 6?
+        if proto == ETHERTYPE_IP:
+            # Check for a version number of 4
+            return gen_mcmp(OR_LINK, 0, BPF_B, 0x40, 0xF0);
 
-#
-#     case DLT_SLIP:
-#     case DLT_SLIP_BSDOS:
-#     case DLT_RAW:
-#         /*
-#          * These types don't provide any type field; packets
-#          * are always IPv4 or IPv6.
-#          *
-#          * XXX - for IPv4, check for a version number of 4, and,
-#          * for IPv6, check for a version number of 6?
-#          */
-#         switch (proto) {
-#
-#         case ETHERTYPE_IP:
-#             /* Check for a version number of 4. */
-#             return gen_mcmp(OR_LINK, 0, BPF_B, 0x40, 0xF0);
-#
-#         case ETHERTYPE_IPV6:
-#             /* Check for a version number of 6. */
-#             return gen_mcmp(OR_LINK, 0, BPF_B, 0x60, 0xF0);
-#
-#         default:
-#             return gen_false();        /* always false */
-#         }
-#         /*NOTREACHED*/
-#         break;
-#
-#     case DLT_IPV4:
-#         /*
-#          * Raw IPv4, so no type field.
-#          */
-#         if (proto == ETHERTYPE_IP)
-#             return gen_true();        /* always true */
-#
-#         /* Checking for something other than IPv4; always false */
-#         return gen_false();
-#         /*NOTREACHED*/
-#         break;
-#
-#     case DLT_IPV6:
-#         /*
-#          * Raw IPv6, so no type field.
-#          */
-#         if (proto == ETHERTYPE_IPV6)
-#             return gen_true();        /* always true */
-#
-#         /* Checking for something other than IPv6; always false */
-#         return gen_false();
-#         /*NOTREACHED*/
-#         break;
-#
-#     case DLT_PPP:
-#     case DLT_PPP_PPPD:
-#     case DLT_PPP_SERIAL:
-#     case DLT_PPP_ETHER:
-#         /*
-#          * We use Ethernet protocol types inside libpcap;
-#          * map them to the corresponding PPP protocol types.
-#          */
-#         proto = ethertype_to_ppptype(proto);
-#         return gen_cmp(OR_LINK, off_linktype, BPF_H, (bpf_int32)proto);
-#         /*NOTREACHED*/
-#         break;
-#
-#     case DLT_PPP_BSDOS:
-#         /*
-#          * We use Ethernet protocol types inside libpcap;
-#          * map them to the corresponding PPP protocol types.
-#          */
-#         switch (proto) {
-#
-#         case ETHERTYPE_IP:
-#             /*
-#              * Also check for Van Jacobson-compressed IP.
-#              * XXX - do this for other forms of PPP?
-#              */
-#             b0 = gen_cmp(OR_LINK, off_linktype, BPF_H, PPP_IP);
-#             b1 = gen_cmp(OR_LINK, off_linktype, BPF_H, PPP_VJC);
-#             gen_or(b0, b1);
-#             b0 = gen_cmp(OR_LINK, off_linktype, BPF_H, PPP_VJNC);
-#             gen_or(b1, b0);
-#             return b0;
-#
-#         default:
-#             proto = ethertype_to_ppptype(proto);
-#             return gen_cmp(OR_LINK, off_linktype, BPF_H,
-#                 (bpf_int32)proto);
-#         }
-#         /*NOTREACHED*/
-#         break;
-#
-#     case DLT_NULL:
-#     case DLT_LOOP:
-#     case DLT_ENC:
-#         /*
-#          * For DLT_NULL, the link-layer header is a 32-bit
-#          * word containing an AF_ value in *host* byte order,
-#          * and for DLT_ENC, the link-layer header begins
-#          * with a 32-bit work containing an AF_ value in
-#          * host byte order.
-#          *
-#          * In addition, if we're reading a saved capture file,
-#          * the host byte order in the capture may not be the
-#          * same as the host byte order on this machine.
-#          *
-#          * For DLT_LOOP, the link-layer header is a 32-bit
-#          * word containing an AF_ value in *network* byte order.
-#          *
-#          * XXX - AF_ values may, unfortunately, be platform-
-#          * dependent; for example, FreeBSD's AF_INET6 is 24
-#          * whilst NetBSD's and OpenBSD's is 26.
-#          *
-#          * This means that, when reading a capture file, just
-#          * checking for our AF_INET6 value won't work if the
-#          * capture file came from another OS.
-#          */
-#         switch (proto) {
-#
-#         case ETHERTYPE_IP:
-#             proto = AF_INET;
-#             break;
-#
-# #ifdef INET6
-#         case ETHERTYPE_IPV6:
-#             proto = AF_INET6;
-#             break;
-# #endif
-#
-#         default:
-#             /*
-#              * Not a type on which we support filtering.
-#              * XXX - support those that have AF_ values
-#              * #defined on this platform, at least?
-#              */
-#             return gen_false();
-#         }
-#
-#         if (linktype == DLT_NULL || linktype == DLT_ENC) {
-#             /*
-#              * The AF_ value is in host byte order, but
-#              * the BPF interpreter will convert it to
-#              * network byte order.
-#              *
-#              * If this is a save file, and it's from a
-#              * machine with the opposite byte order to
-#              * ours, we byte-swap the AF_ value.
-#              *
-#              * Then we run it through "htonl()", and
-#              * generate code to compare against the result.
-#              */
-#             if (bpf_pcap->sf.rfile != NULL &&
-#                 bpf_pcap->sf.swapped)
-#                 proto = SWAPLONG(proto);
-#             proto = htonl(proto);
-#         }
-#         return (gen_cmp(OR_LINK, 0, BPF_W, (bpf_int32)proto));
-#
-# #ifdef HAVE_NET_PFVAR_H
-#     case DLT_PFLOG:
-#         /*
-#          * af field is host byte order in contrast to the rest of
-#          * the packet.
-#          */
-#         if (proto == ETHERTYPE_IP)
-#             return (gen_cmp(OR_LINK, offsetof(struct pfloghdr, af),
-#                 BPF_B, (bpf_int32)AF_INET));
-#         else if (proto == ETHERTYPE_IPV6)
-#             return (gen_cmp(OR_LINK, offsetof(struct pfloghdr, af),
-#                 BPF_B, (bpf_int32)AF_INET6));
-#         else
-#             return gen_false();
-#         /*NOTREACHED*/
-#         break;
-# #endif /* HAVE_NET_PFVAR_H */
-#
-#     case DLT_ARCNET:
-#     case DLT_ARCNET_LINUX:
-#         /*
-#          * XXX should we check for first fragment if the protocol
-#          * uses PHDS?
-#          */
-#         switch (proto) {
-#
-#         default:
-#             return gen_false();
-#
-#         case ETHERTYPE_IPV6:
-#             return (gen_cmp(OR_LINK, off_linktype, BPF_B,
-#                 (bpf_int32)ARCTYPE_INET6));
-#
-#         case ETHERTYPE_IP:
-#             b0 = gen_cmp(OR_LINK, off_linktype, BPF_B,
-#                      (bpf_int32)ARCTYPE_IP);
-#             b1 = gen_cmp(OR_LINK, off_linktype, BPF_B,
-#                      (bpf_int32)ARCTYPE_IP_OLD);
-#             gen_or(b0, b1);
-#             return (b1);
-#
-#         case ETHERTYPE_ARP:
-#             b0 = gen_cmp(OR_LINK, off_linktype, BPF_B,
-#                      (bpf_int32)ARCTYPE_ARP);
-#             b1 = gen_cmp(OR_LINK, off_linktype, BPF_B,
-#                      (bpf_int32)ARCTYPE_ARP_OLD);
-#             gen_or(b0, b1);
-#             return (b1);
-#
-#         case ETHERTYPE_REVARP:
-#             return (gen_cmp(OR_LINK, off_linktype, BPF_B,
-#                     (bpf_int32)ARCTYPE_REVARP));
-#
-#         case ETHERTYPE_ATALK:
-#             return (gen_cmp(OR_LINK, off_linktype, BPF_B,
-#                     (bpf_int32)ARCTYPE_ATALK));
-#         }
-#         /*NOTREACHED*/
-#         break;
-#
-#     case DLT_LTALK:
-#         switch (proto) {
-#         case ETHERTYPE_ATALK:
-#             return gen_true();
-#         default:
-#             return gen_false();
-#         }
-#         /*NOTREACHED*/
-#         break;
-#
-#     case DLT_FRELAY:
-#         /*
-#          * XXX - assumes a 2-byte Frame Relay header with
-#          * DLCI and flags.  What if the address is longer?
-#          */
-#         switch (proto) {
-#
-#         case ETHERTYPE_IP:
-#             /*
-#              * Check for the special NLPID for IP.
-#              */
-#             return gen_cmp(OR_LINK, 2, BPF_H, (0x03<<8) | 0xcc);
-#
-#         case ETHERTYPE_IPV6:
-#             /*
-#              * Check for the special NLPID for IPv6.
-#              */
-#             return gen_cmp(OR_LINK, 2, BPF_H, (0x03<<8) | 0x8e);
-#
-#         case LLCSAP_ISONS:
-#             /*
-#              * Check for several OSI protocols.
-#              *
-#              * Frame Relay packets typically have an OSI
-#              * NLPID at the beginning; we check for each
-#              * of them.
-#              *
-#              * What we check for is the NLPID and a frame
-#              * control field of UI, i.e. 0x03 followed
-#              * by the NLPID.
-#              */
-#             b0 = gen_cmp(OR_LINK, 2, BPF_H, (0x03<<8) | ISO8473_CLNP);
-#             b1 = gen_cmp(OR_LINK, 2, BPF_H, (0x03<<8) | ISO9542_ESIS);
-#             b2 = gen_cmp(OR_LINK, 2, BPF_H, (0x03<<8) | ISO10589_ISIS);
-#             gen_or(b1, b2);
-#             gen_or(b0, b2);
-#             return b2;
-#
-#         default:
-#             return gen_false();
-#         }
-#         /*NOTREACHED*/
-#         break;
-#
-#     case DLT_MFR:
-#         bpf_error("Multi-link Frame Relay link-layer type filtering not implemented");
-#
-#         case DLT_JUNIPER_MFR:
-#         case DLT_JUNIPER_MLFR:
-#         case DLT_JUNIPER_MLPPP:
-#     case DLT_JUNIPER_ATM1:
-#     case DLT_JUNIPER_ATM2:
-#     case DLT_JUNIPER_PPPOE:
-#     case DLT_JUNIPER_PPPOE_ATM:
-#         case DLT_JUNIPER_GGSN:
-#         case DLT_JUNIPER_ES:
-#         case DLT_JUNIPER_MONITOR:
-#         case DLT_JUNIPER_SERVICES:
-#         case DLT_JUNIPER_ETHER:
-#         case DLT_JUNIPER_PPP:
-#         case DLT_JUNIPER_FRELAY:
-#         case DLT_JUNIPER_CHDLC:
-#         case DLT_JUNIPER_VP:
-#         case DLT_JUNIPER_ST:
-#         case DLT_JUNIPER_ISM:
-#         case DLT_JUNIPER_VS:
-#         case DLT_JUNIPER_SRX_E2E:
-#         case DLT_JUNIPER_FIBRECHANNEL:
-#     case DLT_JUNIPER_ATM_CEMIC:
-#
-#         /* just lets verify the magic number for now -
-#          * on ATM we may have up to 6 different encapsulations on the wire
-#          * and need a lot of heuristics to figure out that the payload
-#          * might be;
-#          *
-#          * FIXME encapsulation specific BPF_ filters
-#          */
-#         return gen_mcmp(OR_LINK, 0, BPF_W, 0x4d474300, 0xffffff00); /* compare the magic number */
-#
-#     case DLT_BACNET_MS_TP:
-#         return gen_mcmp(OR_LINK, 0, BPF_W, 0x55FF0000, 0xffff0000);
-#
-#     case DLT_IPNET:
-#         return gen_ipnet_linktype(proto);
-#
-#     case DLT_LINUX_IRDA:
-#         bpf_error("IrDA link-layer type filtering not implemented");
-#
-#     case DLT_DOCSIS:
-#         bpf_error("DOCSIS link-layer type filtering not implemented");
-#
-#     case DLT_MTP2:
-#     case DLT_MTP2_WITH_PHDR:
-#         bpf_error("MTP2 link-layer type filtering not implemented");
-#
-#     case DLT_ERF:
-#         bpf_error("ERF link-layer type filtering not implemented");
-#
-#     case DLT_PFSYNC:
-#         bpf_error("PFSYNC link-layer type filtering not implemented");
-#
-#     case DLT_LINUX_LAPD:
-#         bpf_error("LAPD link-layer type filtering not implemented");
-#
-#     case DLT_USB:
-#     case DLT_USB_LINUX:
-#     case DLT_USB_LINUX_MMAPPED:
-#         bpf_error("USB link-layer type filtering not implemented");
-#
-#     case DLT_BLUETOOTH_HCI_H4:
-#     case DLT_BLUETOOTH_HCI_H4_WITH_PHDR:
-#         bpf_error("Bluetooth link-layer type filtering not implemented");
-#
-#     case DLT_CAN20B:
-#     case DLT_CAN_SOCKETCAN:
-#         bpf_error("CAN link-layer type filtering not implemented");
-#
-#     case DLT_IEEE802_15_4:
-#     case DLT_IEEE802_15_4_LINUX:
-#     case DLT_IEEE802_15_4_NONASK_PHY:
-#     case DLT_IEEE802_15_4_NOFCS:
-#         bpf_error("IEEE 802.15.4 link-layer type filtering not implemented");
-#
-#     case DLT_IEEE802_16_MAC_CPS_RADIO:
-#         bpf_error("IEEE 802.16 link-layer type filtering not implemented");
-#
-#     case DLT_SITA:
-#         bpf_error("SITA link-layer type filtering not implemented");
-#
-#     case DLT_RAIF1:
-#         bpf_error("RAIF1 link-layer type filtering not implemented");
-#
-#     case DLT_IPMB:
-#         bpf_error("IPMB link-layer type filtering not implemented");
-#
-#     case DLT_AX25_KISS:
-#         bpf_error("AX.25 link-layer type filtering not implemented");
-#     }
-#
-#     /*
-#      * All the types that have no encapsulation should either be
-#      * handled as DLT_SLIP, DLT_SLIP_BSDOS, and DLT_RAW are, if
-#      * all packets are IP packets, or should be handled in some
-#      * special case, if none of them are (if some are and some
-#      * aren't, the lack of encapsulation is a problem, as we'd
-#      * have to find some other way of determining the packet type).
-#      *
-#      * Therefore, if "off_linktype" is -1, there's an error.
-#      */
-#     if (off_linktype == (u_int)-1)
-#         abort();
-#
-#     /*
-#      * Any type not handled above should always have an Ethernet
-#      * type at an offset of "off_linktype".
-#      */
-#     return gen_cmp(OR_LINK, off_linktype, BPF_H, (bpf_int32)proto);
-#
+        elif proto == ETHERTYPE_IPV6:
+            # Check for a version number of 6.
+            return gen_mcmp(OR_LINK, 0, BPF_B, 0x60, 0xF0);
+
+        else:
+            return gen_false();
+
+    elif linktype == DLT_IPV4:
+        # Raw IPv4, so no type field.
+        if (proto == ETHERTYPE_IP):
+            return gen_true();  # always true
+
+        # Checking for something other than IPv4; always false
+        return gen_false();
+
+    elif linktype == DLT_IPV6:
+        # Raw IPv6, so no type field.
+        if (proto == ETHERTYPE_IPV6):
+            return gen_true();  # always true
+
+        # Checking for something other than IPv6; always false
+        return gen_false();
+
+    elif linktype in (DLT_PPP, DLT_PPP_PPPD, DLT_PPP_SERIAL, DLT_PPP_ETHER):
+        # We use Ethernet protocol types inside libpcap;
+        # map them to the corresponding PPP protocol types.
+        proto = ethertype2ppptype[proto]
+        return gen_cmp(OR_LINK, off_linktype, BPF_H, proto)
+
+    elif linktype == DLT_PPP_BSDOS:
+        # We use Ethernet protocol types inside libpcap;
+        # map them to the corresponding PPP protocol types.
+        if proto == ETHERTYPE_IP:
+            # Also check for Van Jacobson-compressed IP.
+            # XXX - do this for other forms of PPP?
+            b0 = gen_cmp(OR_LINK, off_linktype, BPF_H, PPP_IP);
+            b1 = gen_cmp(OR_LINK, off_linktype, BPF_H, PPP_VJC);
+            res = gen_or(b0, b1);
+            b0 = gen_cmp(OR_LINK, off_linktype, BPF_H, PPP_VJNC);
+            res = gen_or(res, b0);
+            return res
+
+        else:
+            proto = ethertype2ppptype[proto]
+            return gen_cmp(OR_LINK, off_linktype, BPF_H, proto);
+
+    elif linktype in (DLT_NULL, DLT_LOOP, DLT_ENC):
+        # For DLT_NULL, the link-layer header is a 32-bit
+        # word containing an AF_ value in *host* byte order,
+        # and for DLT_ENC, the link-layer header begins
+        # with a 32-bit work containing an AF_ value in
+        # host byte order.
+        #
+        # In addition, if we're reading a saved capture file,
+        # the host byte order in the capture may not be the
+        # same as the host byte order on this machine.
+        #
+        # For DLT_LOOP, the link-layer header is a 32-bit
+        # word containing an AF_ value in *network* byte order.
+        #
+        # XXX - AF_ values may, unfortunately, be platform-
+        # dependent; for example, FreeBSD's AF_INET6 is 24
+        # whilst NetBSD's and OpenBSD's is 26.
+        #
+        # This means that, when reading a capture file, just
+        # checking for our AF_INET6 value won't work if the
+        # capture file came from another OS.
+        if proto == ETHERTYPE_IP:
+            proto = socket.AF_INET;
+
+        elif proto == ETHERTYPE_IPV6:
+            proto = socket.AF_INET6;
+
+        else:
+            # Not a type on which we support filtering.
+            # XXX - support those that have AF_ values
+            # #defined on this platform, at least?
+            return gen_false()
+
+        if (linktype == DLT_NULL or linktype == DLT_ENC):
+            # The AF_ value is in host byte order, but
+            # the BPF interpreter will convert it to
+            # network byte order.
+            #
+            # If this is a save file, and it's from a
+            # machine with the opposite byte order to
+            # ours, we byte-swap the AF_ value.
+            #
+            # Then we run it through "htonl()", and
+            # generate code to compare against the result.
+
+            # NOTE: my: Here was an attempt to swap the byte order
+            # of the proto - if it says so in the pcap header.
+            # we don't have pcap header so we ignore it.
+            proto = socket.htonl(proto);
+
+        return gen_cmp(OR_LINK, 0, BPF_W, proto)
+
+    elif linktype == DLT_PFLOG:
+        # af field is host byte order in contrast to the rest of
+        # the packet.
+        offset_of_af_in_pfloghdr = 1
+        if (proto == ETHERTYPE_IP):
+            return gen_cmp(OR_LINK, offset_of_af_in_pfloghdr, BPF_B,
+                           socket.AF_INET)
+        elif (proto == ETHERTYPE_IPV6):
+            return gen_cmp(OR_LINK, offset_of_af_in_pfloghdr, BPF_B,
+                           socket.AF_INET6)
+        else:
+            return gen_false();
+
+    elif linktype in (DLT_ARCNET, DLT_ARCNET_LINUX):
+        # XXX should we check for first fragment if the protocol
+        # uses PHDS?
+        if proto == ETHERTYPE_IPV6:
+            return gen_cmp(OR_LINK, off_linktype, BPF_B, ARCTYPE_INET6)
+
+        elif proto == ETHERTYPE_IP:
+            b0 = gen_cmp(OR_LINK, off_linktype, BPF_B, ARCTYPE_IP);
+            b1 = gen_cmp(OR_LINK, off_linktype, BPF_B, ARCTYPE_IP_OLD);
+            return gen_or(b0, b1);
+
+        elif proto == ETHERTYPE_ARP:
+            b0 = gen_cmp(OR_LINK, off_linktype, BPF_B, ARCTYPE_ARP);
+            b1 = gen_cmp(OR_LINK, off_linktype, BPF_B, ARCTYPE_ARP_OLD);
+            return gen_or(b0, b1);
+
+        elif proto == ETHERTYPE_REVARP:
+            return gen_cmp(OR_LINK, off_linktype, BPF_B, ARCTYPE_REVARP)
+
+        elif proto == ETHERTYPE_ATALK:
+            return gen_cmp(OR_LINK, off_linktype, BPF_B, ARCTYPE_ATALK)
+        else:
+            return gen_false();
+
+    elif linktype == DLT_LTALK:
+        if proto == ETHERTYPE_ATALK:
+            return gen_true();
+        else:
+            return gen_false();
+
+    elif linktype == DLT_FRELAY:
+        # XXX - assumes a 2-byte Frame Relay header with
+        # DLCI and flags.  What if the address is longer?
+        if proto == ETHERTYPE_IP:
+            # Check for the special NLPID for IP.
+            return gen_cmp(OR_LINK, 2, BPF_H, (0x03 << 8) | 0xcc);
+
+        elif ETHERTYPE_IPV6:
+            # Check for the special NLPID for IPv6.
+            return gen_cmp(OR_LINK, 2, BPF_H, (0x03 << 8) | 0x8e);
+
+        elif LLCSAP_ISONS:
+            # Check for several OSI protocols.
+            #
+            # Frame Relay packets typically have an OSI
+            # NLPID at the beginning; we check for each
+            # of them.
+            #
+            # What we check for is the NLPID and a frame
+            # control field of UI, i.e. 0x03 followed
+            # by the NLPID.
+            b0 = gen_cmp(OR_LINK, 2, BPF_H, (0x03 << 8) | ISO8473_CLNP);
+            b1 = gen_cmp(OR_LINK, 2, BPF_H, (0x03 << 8) | ISO9542_ESIS);
+            b2 = gen_cmp(OR_LINK, 2, BPF_H, (0x03 << 8) | ISO10589_ISIS);
+            return gen_or(b0, gen_or(b1, b2))
+
+        else:
+            return gen_false();
+
+    elif linktype == DLT_MFR:
+        bpf_error(
+            "Multi-link Frame Relay link-layer type filtering not implemented");
+
+    elif linktype in (DLT_JUNIPER_MFR, DLT_JUNIPER_MLFR, DLT_JUNIPER_MLPPP,
+                      DLT_JUNIPER_ATM1,
+                      DLT_JUNIPER_ATM2, DLT_JUNIPER_PPPOE,
+                      DLT_JUNIPER_PPPOE_ATM,
+                      DLT_JUNIPER_GGSN, DLT_JUNIPER_ES, DLT_JUNIPER_MONITOR,
+                      DLT_JUNIPER_SERVICES,
+                      DLT_JUNIPER_ETHER, DLT_JUNIPER_PPP, DLT_JUNIPER_FRELAY,
+                      DLT_JUNIPER_CHDLC,
+                      DLT_JUNIPER_VP, DLT_JUNIPER_ST, DLT_JUNIPER_ISM,
+                      DLT_JUNIPER_VS,
+                      DLT_JUNIPER_SRX_E2E, DLT_JUNIPER_FIBRECHANNEL,
+                      DLT_JUNIPER_ATM_CEMIC):
+        # just lets verify the magic number for now -
+        # on ATM we may have up to 6 different encapsulations on the wire
+        # and need a lot of heuristics to figure out that the payload
+        # might be;
+        #
+        # FIXME encapsulation specific BPF_ filters
+        # compare the magic number
+        return gen_mcmp(OR_LINK, 0, BPF_W, 0x4d474300, 0xffffff00);
+
+
+    elif linktype == DLT_BACNET_MS_TP:
+        return gen_mcmp(OR_LINK, 0, BPF_W, 0x55FF0000, 0xffff0000);
+
+    elif linktype == DLT_IPNET:
+        return gen_ipnet_linktype(proto);
+
+    elif linktype == DLT_LINUX_IRDA:
+        bpf_error("IrDA link-layer type filtering not implemented");
+
+    elif linktype == DLT_DOCSIS:
+        bpf_error("DOCSIS link-layer type filtering not implemented");
+
+    elif linktype in (DLT_MTP2, DLT_MTP2_WITH_PHDR):
+        bpf_error("MTP2 link-layer type filtering not implemented");
+
+    elif linktype == DLT_ERF:
+        bpf_error("ERF link-layer type filtering not implemented");
+
+    elif linktype == DLT_PFSYNC:
+        bpf_error("PFSYNC link-layer type filtering not implemented");
+
+    elif linktype == DLT_LINUX_LAPD:
+        bpf_error("LAPD link-layer type filtering not implemented");
+
+    elif linktype in (DLT_USB, DLT_USB_LINUX, DLT_USB_LINUX_MMAPPED):
+        bpf_error("USB link-layer type filtering not implemented");
+
+    elif linktype in (DLT_BLUETOOTH_HCI_H4, DLT_BLUETOOTH_HCI_H4_WITH_PHDR):
+        bpf_error("Bluetooth link-layer type filtering not implemented");
+
+    elif linktype in (DLT_CAN20B, DLT_CAN_SOCKETCAN):
+        bpf_error("CAN link-layer type filtering not implemented");
+
+    elif linktype in (
+    DLT_IEEE802_15_4, DLT_IEEE802_15_4_LINUX, DLT_IEEE802_15_4_NONASK_PHY,
+    DLT_IEEE802_15_4_NOFCS):
+        bpf_error("IEEE 802.15.4 link-layer type filtering not implemented");
+
+    elif linktype == DLT_IEEE802_16_MAC_CPS_RADIO:
+        bpf_error("IEEE 802.16 link-layer type filtering not implemented");
+
+    elif linktype == DLT_SITA:
+        bpf_error("SITA link-layer type filtering not implemented");
+
+    elif linktype == DLT_RAIF1:
+        bpf_error("RAIF1 link-layer type filtering not implemented");
+
+    elif linktype == DLT_IPMB:
+        bpf_error("IPMB link-layer type filtering not implemented");
+
+    elif linktype == DLT_AX25_KISS:
+        bpf_error("AX.25 link-layer type filtering not implemented");
+
+    # All the types that have no encapsulation should either be
+    # handled as DLT_SLIP, DLT_SLIP_BSDOS, and DLT_RAW are, if
+    # all packets are IP packets, or should be handled in some
+    # special case, if none of them are (if some are and some
+    # aren't, the lack of encapsulation is a problem, as we'd
+    # have to find some other way of determining the packet type).
+    #
+    # Therefore, if "off_linktype" is -1, there's an error.
+
+    if (off_linktype == -1):
+        abort();
+
+    # Any type not handled above should always have an Ethernet
+    # type at an offset of "off_linktype".
+    return gen_cmp(OR_LINK, off_linktype, BPF_H, proto);
 
 
 def gen_not(block):
@@ -1243,6 +1147,10 @@ def gen_not(block):
 
 
 def gen_cmp(offrel, offset, size, v):
+    pass
+
+
+def gen_mcmp(offrel, offset, size, v, mask):
     pass
 
 
@@ -1286,6 +1194,10 @@ def gen_llc_linktype(proto):
     pass
 
 
+def gen_ipnet_linktype(proto):
+    pass
+
+
 def gen_check_802_11_data_frame():
     pass
 
@@ -1295,6 +1207,18 @@ def gen_atmfield_code(atmfield, jvalue, jtype, reverse):
 
 
 def gen_linux_sll_linktype(proto):
+    pass
+
+
+def gen_false():
+    return gen_uncond(0)
+
+
+def gen_true():
+    return gen_uncond(1)
+
+
+def gen_uncond(rsense):
     pass
 
 

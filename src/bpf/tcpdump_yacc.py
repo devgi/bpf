@@ -1,7 +1,7 @@
 import ply.yacc as yacc
 from tcpdump_lex import tokens
-from gencode import (finish_parse, gen_and, gen_or, type2qual, gen_proto_abbrev)
-
+from gencode import (finish_parse, gen_and, gen_or, gen_not, type2qual,
+                     gen_proto_abbrev, YYSType, QErr)
 
 
 def QSET(q, p, d, a):
@@ -12,7 +12,8 @@ def QSET(q, p, d, a):
 
 def p_prog(p):
     """prog : expr"""
-    p[0] = finish_parse(p[1])
+    p[0] = finish_parse(p[1].blk_block_b)
+
 
 # line 324
 def p_expression(p):
@@ -21,7 +22,7 @@ def p_expression(p):
             | expr OR term
             | expr OR id
             | term"""
-    if len(p) == 2: # term
+    if len(p) == 2:  # term
         p[0] = p[1]
     elif p[2] == "and":
         p[0] = gen_and(p[1], p[3])
@@ -79,6 +80,11 @@ def p_qid(p):
 def p_term(p):
     """term : rterm
             | not term"""
+    if p.slice[1].type == "rterm":
+        p[0] = p[1]
+    else:
+        p[2].b = gen_not(p[2].blk_block_b)
+        p[0] = p[2]
 
 
 def p_head(p):
@@ -103,14 +109,17 @@ def p_rterm(p):
              | atmfield atmvalue
              | mtp2type
              | mtp3field mtp3value"""
-    if p.slice[1] == 'pname':
-        p[0].b = gen_proto_abbrev(p[1])
-        p[0].q = qerr;
+    if p.slice[1].type == 'pname':
+        p[0] = YYSType()
+        p[0].blk_block_b = gen_proto_abbrev(p[1])
+        p[0].blk_qual_q = QErr;
+
 
 # line 432
 def p_pqual(p):
     """pqual : pname
              |"""
+
 
 # line 435
 def p_dqual(p):
@@ -183,6 +192,7 @@ def p_pname(p):
              | NETBEUI
              | RADIO"""
     p[0] = type2qual[p.slice[1].type]
+
 
 def p_other(p):
     """other : pqual TK_BROADCAST
@@ -278,8 +288,8 @@ def p_narth(p):
             | arth RSH arth
             | paren narth ')'
             | LEN"""
-            # should be there. cause problems so comment out.
-            # | S_MINUS arth %prec S_MINUS
+    # should be there. cause problems so comment out.
+    # | S_MINUS arth %prec S_MINUS
 
 
 # line 628
@@ -374,7 +384,9 @@ def p_error(p):
     print "Syntax error in input!"
     raise RuntimeError(p)
 
+
 parser = yacc.yacc()
+
 
 def compile_filter(expression):
     return parser.parse(expression, )
