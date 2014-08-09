@@ -1,6 +1,6 @@
 import pytest
 
-from bpf.tcpdump_yacc import parser
+from bpf.tcpdump_yacc import compile_filter
 from bpf.program import BPFProgram
 
 @pytest.mark.parametrize(("filter_string",),
@@ -31,7 +31,7 @@ def test_valid_filter(filter_string):
                      ])
 def test_invalid_filter(filter_string):
     with pytest.raises(RuntimeError):
-        parser.parse(filter_string, debug=1)
+        compile_filter(filter_string, debug=1)
 
 
 filter_expression_to_program = {}
@@ -49,7 +49,7 @@ filter_expression_to_program['arp'] = [
 )
 def test_compile_simple_programs(filter_string, expected_program_c_style):
     expected_bpf_program = BPFProgram.from_tuple(expected_program_c_style)
-    bpf_program = parser.parse(filter_string, debug=1)
+    bpf_program = compile_filter(filter_string, debug=1)
 
     assert bpf_program == expected_bpf_program
 

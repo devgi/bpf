@@ -1,7 +1,6 @@
 import ply.yacc as yacc
 from tcpdump_lex import tokens
-from gencode import (finish_parse, gen_and, gen_or, gen_not, type2qual,
-                     gen_proto_abbrev, YYSType, QErr)
+from gencode import (BPFCodegen, type2qual, YYSType, QErr)
 
 
 def QSET(q, p, d, a):
@@ -12,7 +11,7 @@ def QSET(q, p, d, a):
 
 def p_prog(p):
     """prog : expr"""
-    p[0] = finish_parse(p[1].blk_block_b)
+    p[0] = p.parser.bpfcodegen.finish_parse(p[1].blk_block_b)
 
 
 # line 324
@@ -25,9 +24,9 @@ def p_expression(p):
     if len(p) == 2:  # term
         p[0] = p[1]
     elif p[2] == "and":
-        p[0] = gen_and(p[1], p[3])
+        p[0] = p.parser.bpfcodegen.gen_and(p[1], p[3])
     elif p[2] == "or":
-        p[0] = gen_or(p[1], p[3])
+        p[0] = p.parser.bpfcodegen.gen_or(p[1], p[3])
 
 
 # line 334
@@ -83,7 +82,7 @@ def p_term(p):
     if p.slice[1].type == "rterm":
         p[0] = p[1]
     else:
-        p[2].b = gen_not(p[2].blk_block_b)
+        p[2].b = p.parser.bpfcodegen.gen_not(p[2].blk_block_b)
         p[0] = p[2]
 
 
@@ -111,7 +110,7 @@ def p_rterm(p):
              | mtp3field mtp3value"""
     if p.slice[1].type == 'pname':
         p[0] = YYSType()
-        p[0].blk_block_b = gen_proto_abbrev(p[1])
+        p[0].blk_block_b = p.parser.bpfcodegen.gen_proto_abbrev(p[1])
         p[0].blk_qual_q = QErr;
 
 
@@ -385,8 +384,10 @@ def p_error(p):
     raise RuntimeError(p)
 
 
-parser = yacc.yacc()
 
 
-def compile_filter(expression):
-    return parser.parse(expression, )
+
+def compile_filter(expression, debug=0):
+    parser = yacc.yacc()
+    parser.bpfcodegen = BPFCodegen()
+    return parser.parse(expression, debug=debug)
