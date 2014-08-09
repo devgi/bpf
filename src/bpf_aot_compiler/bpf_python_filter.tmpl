@@ -1,0 +1,208 @@
+import struct
+
+
+{% macro EXTRACT_LONG(k) %} struct.unpack("!L", packet[{{k}}: {{k}} + {{ SIZE_OF_INT32 }}])[0] {% endmacro %}
+
+{% macro EXTRACT_SHORT(k) %} struct.unpack("!H", packet[{{k}}: {{k}} + {{ SIZE_OF_SHORT }}])[0] {% endmacro %}
+
+{% macro EXTRACT_BYTE(k) %} struct.unpack("!B", packet[{{k}}: {{k}} + {{ SIZE_OF_BYTE }}])[0] {% endmacro %}
+
+
+def bpf_filter(packet, wirelen=None):
+    """
+    {{bpf_program.format_as_string()}}
+    """
+    import struct
+    buflen = len(packet)
+    wirelen = wirelen or buflen
+
+    {% if not bpf_program.instructions %}
+    # No filter means accept all.
+    return -1
+    {% endif %}
+
+    # The BPF architecture consists of the following basic elements:
+    #
+    # Element          Description
+    #
+    #   A                32 bit wide accumulator
+    #   X                32 bit wide X register
+    #   M[]              16 x 32 bit wide misc registers aka "scratch memory
+    #                    store", addressable from 0 to 15
+    A = 0
+    X = 0
+    mem = [0] * {{BPF_MEMWORDS}}
+    pc = 1
+
+    {% for opcode in bpf_program.instructions %}
+    {% set k = opcode.k %}
+
+    {# we do this to fix indent. and implement jumps#}
+    # {{ opcode }}
+    if pc == {{loop.index}}:
+        pc += 1
+    {% if opcode.code == bitwiseor( BPF_RET , BPF_K ) %}
+        return {{k}}
+
+    {% elif opcode.code == bitwiseor( BPF_RET , BPF_A ) %}
+        return A
+
+    {% elif opcode.code == bitwiseor( BPF_LD , BPF_W , BPF_ABS ) %}
+
+        if ({{k}} + {{ SIZE_OF_INT32 }} > buflen):
+            return 0
+
+        A = {{ EXTRACT_LONG(k) }}
+
+    {% elif opcode.code == bitwiseor( BPF_LD , BPF_H , BPF_ABS ) %}
+        if ({{k}} + {{ SIZE_OF_SHORT }} > buflen):
+            return 0
+        A = {{ EXTRACT_SHORT(k) }}
+
+    {% elif opcode.code == bitwiseor( BPF_LD , BPF_B , BPF_ABS ) %}
+        if ({{k}} >= buflen):
+            return 0
+
+        A = {{ EXTRACT_BYTE(k) }}
+
+    {% elif opcode.code == bitwiseor( BPF_LD , BPF_W , BPF_LEN ) %}
+        A = wirelen
+
+    {% elif opcode.code == bitwiseor( BPF_LDX , BPF_W , BPF_LEN ) %}
+        X = wirelen
+
+    {% elif opcode.code == bitwiseor( BPF_LD , BPF_W , BPF_IND ) %}
+
+        if (X + {{k}} + {{ SIZE_OF_INT32 }} > buflen):
+            return 0
+
+        A = {{ EXTRACT_LONG("X + %d" % k)  }}
+
+    {% elif opcode.code == bitwiseor( BPF_LD , BPF_H , BPF_IND ) %}
+        if (X + {{k}} + {{ SIZE_OF_SHORT }} > buflen):
+            return 0
+
+        A = {{ EXTRACT_SHORT("X + %d" % k ) }}
+
+    {% elif opcode.code == bitwiseor( BPF_LD , BPF_B , BPF_IND ) %}
+        if (X + {{k}} >= buflen):
+            return 0
+        A = {{ EXTRACT_SHORT(" X + %d" % k ) }}
+
+    {% elif opcode.code == bitwiseor( BPF_LDX , BPF_MSH , BPF_B ) %}
+        if ({{k}} >= buflen):
+            return 0
+
+        X = ( {{ EXTRACT_BYTE(k) }} & 0xf) << 2
+
+    {% elif opcode.code == bitwiseor( BPF_LD , BPF_IMM ) %}
+        A = {{k}}
+
+    {% elif opcode.code == bitwiseor( BPF_LDX , BPF_IMM ) %}
+        X = {{k}}
+
+    {% elif opcode.code == bitwiseor( BPF_LD , BPF_MEM ) %}
+        A = mem[{{k}}]
+
+    {% elif opcode.code == bitwiseor( BPF_LDX , BPF_MEM ) %}
+        X = mem[{{k}}]
+
+    {% elif opcode.code == bitwiseor( BPF_ST ) %}
+        mem[{{k}}] = A
+
+    {% elif opcode.code == bitwiseor( BPF_STX ) %}
+        mem[{{k}}] = X
+
+    {% elif opcode.code == bitwiseor( BPF_JMP , BPF_JA ) %}
+        # No backward jumps allowed.
+        pc += {{k}}
+
+    {% elif opcode.code == bitwiseor( BPF_JMP , BPF_JGT , BPF_K ) %}
+        pc += {{opcode.jt}} if (A > {{k}}) else {{opcode.jf}}
+
+    {% elif opcode.code == bitwiseor( BPF_JMP , BPF_JGE , BPF_K ) %}
+        pc += {{opcode.jt}} if (A >= {{k}}) else {{opcode.jf}}
+
+    {% elif opcode.code == bitwiseor( BPF_JMP , BPF_JEQ , BPF_K ) %}
+        pc += {{opcode.jt}} if (A == {{k}}) else {{opcode.jf}}
+
+    {% elif opcode.code == bitwiseor( BPF_JMP , BPF_JSET , BPF_K ) %}
+        pc += {{opcode.jt}} if (A & {{k}}) else  {{opcode.jf}}
+
+    {% elif opcode.code == bitwiseor( BPF_JMP , BPF_JGT , BPF_X ) %}
+        pc += {{opcode.jt}} if (A > X) else {{opcode.jf}}
+
+    {% elif opcode.code == bitwiseor( BPF_JMP , BPF_JGE , BPF_X ) %}
+        pc += {{opcode.jt}} if (A >= X) else {{opcode.jf}}
+
+    {% elif opcode.code == bitwiseor( BPF_JMP , BPF_JEQ , BPF_X ) %}
+        pc += {{opcode.jt}} if (A == X) else {{opcode.jf}}
+
+    {% elif opcode.code == bitwiseor( BPF_JMP , BPF_JSET , BPF_X ) %}
+        pc += {{opcode.jt}} if (A & X) else {{opcode.jf}}
+
+    {% elif opcode.code == bitwiseor( BPF_ALU , BPF_ADD , BPF_X ) %}
+        A += X
+
+    {% elif opcode.code == bitwiseor( BPF_ALU , BPF_SUB , BPF_X ) %}
+        A -= X
+
+    {% elif opcode.code == bitwiseor( BPF_ALU , BPF_MUL , BPF_X ) %}
+        A *= X
+
+    {% elif opcode.code == bitwiseor( BPF_ALU , BPF_DIV , BPF_X ) %}
+        if (X == 0):
+            return 0
+        A /= X
+
+    {% elif opcode.code == bitwiseor( BPF_ALU , BPF_AND , BPF_X ) %}
+        A &= X
+
+    {% elif opcode.code == bitwiseor( BPF_ALU , BPF_OR , BPF_X ) %}
+        A |= X
+
+    {% elif opcode.code == bitwiseor( BPF_ALU , BPF_LSH , BPF_X ) %}
+        A <<= X
+
+    {% elif opcode.code == bitwiseor( BPF_ALU , BPF_RSH , BPF_X ) %}
+        A >>= X
+
+    {% elif opcode.code == bitwiseor( BPF_ALU , BPF_ADD , BPF_K ) %}
+        A += {{k}}
+
+    {% elif opcode.code == bitwiseor( BPF_ALU , BPF_SUB , BPF_K ) %}
+        A -= {{k}}
+
+    {% elif opcode.code == bitwiseor( BPF_ALU , BPF_MUL , BPF_K ) %}
+        A *= {{k}}
+
+    {% elif opcode.code == bitwiseor( BPF_ALU , BPF_DIV , BPF_K ) %}
+        A /= {{k}}
+
+    {% elif opcode.code == bitwiseor( BPF_ALU , BPF_AND , BPF_K ) %}
+        A &= {{k}}
+
+    {% elif opcode.code == bitwiseor( BPF_ALU , BPF_OR , BPF_K ) %}
+        A |= {{k}}
+
+    {% elif opcode.code == bitwiseor( BPF_ALU , BPF_LSH , BPF_K ) %}
+        A <<= {{k}}
+
+    {% elif opcode.code == bitwiseor( BPF_ALU , BPF_RSH , BPF_K ) %}
+        A >>= {{k}}
+
+    {% elif opcode.code == bitwiseor( BPF_ALU , BPF_NEG ) %}
+        A = -A
+
+    {% elif opcode.code == bitwiseor( BPF_MISC , BPF_TAX ) %}
+        X = A
+
+    {% elif opcode.code == bitwiseor( BPF_MISC , BPF_TXA ) %}
+        A = X
+
+    {% else %}
+        raise RuntimeError("opps?")
+    {% endif %}
+    {% endfor %}
+
+    assert False, "Bad compilation. (never should be here)"
